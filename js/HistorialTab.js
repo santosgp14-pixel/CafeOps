@@ -1,4 +1,4 @@
-// ─── HISTORIAL TAB COMPONENT ─────────────────────────────────────────────────
+﻿// ─── HISTORIAL TAB COMPONENT ─────────────────────────────────────────────────
 
 function HistorialTab({ auditLogs }) {
   const { useState } = React;
@@ -9,10 +9,34 @@ function HistorialTab({ auditLogs }) {
 
   const actionIcon = (a) => {
     if (a.includes('Eliminar')) return '🗑';
-    if (a.includes('Editar') || a.includes('stock')) return '✏️';
-    if (a.includes('calibr')) return '⚖️';
-    if (a.includes('limpieza') || a.includes('tarea')) return '🧼';
+    if (a.includes('Consumo')) return '📦';
+    if (a.includes('Editar') || a.includes('calibr')) return '✏️';
+    if (a.includes('limpieza') || a.includes('tarea') || a.includes('retroactivo')) return '🧼';
     return '📋';
+  };
+
+  const exportCSV = () => {
+    const headers = ['Acción', 'Elemento', 'Valor anterior', 'Valor nuevo', 'Responsable', 'Fecha'];
+    const rows = auditLogs.map(e => [
+      e.action,
+      e.entity,
+      e.oldVal != null ? e.oldVal : '',
+      e.newVal != null ? e.newVal : '',
+      e.person,
+      window.fmtDate(e.fecha)
+    ]);
+    const csv = [headers, ...rows]
+      .map(r => r.map(v => '"' + String(v).replace(/"/g, '""') + '"').join(','))
+      .join('\n');
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'cafeops-historial-' + new Date().toISOString().slice(0, 10) + '.csv';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   };
 
   return (
@@ -22,6 +46,9 @@ function HistorialTab({ auditLogs }) {
           <h2 className="section-title">Historial</h2>
           <p className="section-subtitle">{auditLogs.length} acciones registradas</p>
         </div>
+        {auditLogs.length > 0 && (
+          <button className="btn btn-ghost btn-sm" onClick={exportCSV}>📥 CSV</button>
+        )}
       </div>
 
       {auditLogs.length === 0 ? (
@@ -32,11 +59,11 @@ function HistorialTab({ auditLogs }) {
       ) : (
         <>
           <div className="filter-row">
-            <button className={`filter-chip${filter === 'todos' ? ' active' : ''}`} onClick={() => setFilter('todos')}>
+            <button className={'filter-chip' + (filter === 'todos' ? ' active' : '')} onClick={() => setFilter('todos')}>
               Todos
             </button>
             {actionTypes.map(t => (
-              <button key={t} className={`filter-chip${filter === t ? ' active' : ''}`} onClick={() => setFilter(t)}>
+              <button key={t} className={'filter-chip' + (filter === t ? ' active' : '')} onClick={() => setFilter(t)}>
                 {actionIcon(t)} {t}
               </button>
             ))}

@@ -8,7 +8,7 @@ function PinModal({ title, subtitle, onConfirm, onCancel }) {
 
   const handleConfirm = () => {
     if (!person.trim()) { setError('Ingresá tu nombre'); return; }
-    if (pin !== window.ADMIN_PIN) { setError('PIN incorrecto'); setPin(''); return; }
+    if (pin !== window.getPin()) { setError('PIN incorrecto'); setPin(''); return; }
     onConfirm(person.trim());
   };
 

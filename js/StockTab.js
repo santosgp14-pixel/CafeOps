@@ -1,4 +1,48 @@
-// ─── STOCK TAB COMPONENT ─────────────────────────────────────────────────────
+﻿// ─── STOCK TAB COMPONENT ─────────────────────────────────────────────────────
+
+// ConsumoModal – bottom sheet for logging stock usage (no PIN required)
+function ConsumoModal({ product, onConfirm, onCancel }) {
+  const { useState } = React;
+  const [qty, setQty] = useState('');
+  const [person, setPerson] = useState('');
+  const [error, setError] = useState('');
+
+  const handleConfirm = () => {
+    const q = parseFloat(qty);
+    if (!person.trim()) { setError('Ingresá tu nombre'); return; }
+    if (!qty || isNaN(q) || q <= 0) { setError('Ingresá una cantidad válida'); return; }
+    if (q > product.cantidad) { setError('Solo hay ' + product.cantidad + ' ' + product.unidad + ' disponibles'); return; }
+    onConfirm(q, person.trim());
+  };
+
+  return (
+    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onCancel()}>
+      <div className="modal">
+        <div className="modal-handle" />
+        <div style={{ fontSize: 28, textAlign: 'center', marginBottom: 12 }}>📦</div>
+        <h3 className="modal-title">Registrar consumo</h3>
+        <p className="modal-subtitle">{product.nombre} — disponible: <strong>{product.cantidad} {product.unidad}</strong></p>
+        <div className="form-group">
+          <label className="form-label">Tu nombre</label>
+          <input className="form-input" placeholder="Ej: Juan" value={person}
+            onChange={e => { setPerson(e.target.value); setError(''); }} />
+        </div>
+        <div className="form-group">
+          <label className="form-label">Cantidad a usar ({product.unidad})</label>
+          <input className="form-input" type="number" step="0.1" min="0.1"
+            placeholder="0" value={qty}
+            onChange={e => { setQty(e.target.value); setError(''); }}
+            onKeyDown={e => e.key === 'Enter' && handleConfirm()} />
+        </div>
+        {error && <p className="pin-error">⚠ {error}</p>}
+        <div className="modal-actions">
+          <button className="btn btn-ghost" onClick={onCancel}>Cancelar</button>
+          <button className="btn btn-primary" onClick={handleConfirm}>✓ Registrar</button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function StockTab({ products, setProducts, auditLogs, setAuditLogs, showToast }) {
   const { useState } = React;
@@ -7,6 +51,7 @@ function StockTab({ products, setProducts, auditLogs, setAuditLogs, showToast })
   const [editId, setEditId] = useState(null);
   const [pinModal, setPinModal] = useState(null);
   const [filter, setFilter] = useState('todos');
+  const [consumeProduct, setConsumeProduct] = useState(null);
 
   const lowStock = products.filter(p => parseFloat(p.cantidad) < parseFloat(p.stockMin));
 
@@ -39,7 +84,7 @@ function StockTab({ products, setProducts, auditLogs, setAuditLogs, showToast })
     });
     setPinModal({
       action: 'Editar insumo',
-      subtitle: `Editando: ${product.nombre}`,
+      subtitle: 'Editando: ' + product.nombre,
       type: 'edit',
       product
     });
@@ -48,23 +93,37 @@ function StockTab({ products, setProducts, auditLogs, setAuditLogs, showToast })
   const requestDelete = (product) => {
     setPinModal({
       action: 'Eliminar insumo',
-      subtitle: `Eliminás: ${product.nombre}`,
+      subtitle: 'Eliminás: ' + product.nombre,
       type: 'delete',
       product
     });
+  };
+
+  const handleConsume = (qty, person) => {
+    const p = consumeProduct;
+    const newCantidad = Math.round((p.cantidad - qty) * 1000) / 1000;
+    const updated = { ...p, cantidad: newCantidad };
+    setProducts(prev => { const n = prev.map(x => x.id === p.id ? updated : x); window.save('products', n); return n; });
+    saveAudit('Consumo de stock', p.nombre, p.cantidad + ' ' + p.unidad, newCantidad + ' ' + p.unidad, person);
+    setConsumeProduct(null);
+    if (newCantidad < p.stockMin) {
+      showToast('⚠ ' + p.nombre + ' quedó con stock bajo');
+    } else {
+      showToast('✓ Consumo registrado (-' + qty + ' ' + p.unidad + ')');
+    }
   };
 
   const handlePinConfirm = (person) => {
     if (pinModal.type === 'delete') {
       const p = pinModal.product;
       setProducts(prev => { const n = prev.filter(x => x.id !== p.id); window.save('products', n); return n; });
-      saveAudit('Eliminar insumo', p.nombre, `${p.cantidad} ${p.unidad}`, 'eliminado', person);
+      saveAudit('Eliminar insumo', p.nombre, p.cantidad + ' ' + p.unidad, 'eliminado', person);
       showToast('Insumo eliminado');
     } else if (pinModal.type === 'edit') {
       const p = pinModal.product;
       const updated = { ...p, ...form, cantidad: parseFloat(form.cantidad), stockMin: parseFloat(form.stockMin) };
       setProducts(prev => { const n = prev.map(x => x.id === p.id ? updated : x); window.save('products', n); return n; });
-      saveAudit('Editar insumo', p.nombre, `cant: ${p.cantidad}, min: ${p.stockMin}`, `cant: ${form.cantidad}, min: ${form.stockMin}`, person);
+      saveAudit('Editar insumo', p.nombre, 'cant: ' + p.cantidad + ', min: ' + p.stockMin, 'cant: ' + form.cantidad + ', min: ' + form.stockMin, person);
       showToast('Insumo actualizado ✓');
       setEditId(null);
       setForm({ nombre: '', cantidad: '', unidad: 'kg', stockMin: '' });
@@ -149,8 +208,8 @@ function StockTab({ products, setProducts, auditLogs, setAuditLogs, showToast })
 
       <div className="filter-row">
         {['todos', 'bajo'].map(f => (
-          <button key={f} className={`filter-chip${filter === f ? ' active' : ''}`} onClick={() => setFilter(f)}>
-            {f === 'todos' ? 'Todos' : `🔴 Stock bajo (${lowStock.length})`}
+          <button key={f} className={'filter-chip' + (filter === f ? ' active' : '')} onClick={() => setFilter(f)}>
+            {f === 'todos' ? 'Todos' : '🔴 Stock bajo (' + lowStock.length + ')'}
           </button>
         ))}
       </div>
@@ -166,7 +225,7 @@ function StockTab({ products, setProducts, auditLogs, setAuditLogs, showToast })
         const low = isLow(p);
         const pct = stockPct(p);
         return (
-          <div key={p.id} className="card" style={{ borderLeft: `3px solid ${low ? 'var(--alert)' : 'var(--ok)'}` }}>
+          <div key={p.id} className="card" style={{ borderLeft: '3px solid ' + (low ? 'var(--alert)' : 'var(--ok)') }}>
             <div className="card-row">
               <div style={{ flex: 1 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
@@ -180,13 +239,16 @@ function StockTab({ products, setProducts, auditLogs, setAuditLogs, showToast })
                   <span className="card-meta">/ mín {p.stockMin} {p.unidad}</span>
                 </div>
                 <div className="progress-bar">
-                  <div className="progress-fill" style={{ width: `${pct}%`, background: low ? 'var(--alert)' : 'var(--ok)' }} />
+                  <div className="progress-fill" style={{ width: pct + '%', background: low ? 'var(--alert)' : 'var(--ok)' }} />
                 </div>
-                <span className={`stock-badge ${low ? 'badge-low' : 'badge-ok'}`}>
+                <span className={'stock-badge ' + (low ? 'badge-low' : 'badge-ok')}>
                   {low ? '⚠ Stock bajo' : '✓ OK'}
                 </span>
               </div>
               <div className="card-actions">
+                <button className="btn btn-ghost btn-icon btn-sm" title="Registrar uso"
+                  style={{ color: 'var(--ok)', fontSize: 16 }}
+                  onClick={() => setConsumeProduct(p)}>➖</button>
                 <button className="btn btn-ghost btn-icon btn-sm" title="Editar"
                   onClick={() => { setShowForm(true); requestEdit(p); }}>✏️</button>
                 <button className="btn btn-danger btn-icon btn-sm" title="Eliminar"
@@ -196,6 +258,12 @@ function StockTab({ products, setProducts, auditLogs, setAuditLogs, showToast })
           </div>
         );
       })}
+
+      {consumeProduct && (
+        <ConsumoModal product={consumeProduct}
+          onConfirm={handleConsume}
+          onCancel={() => setConsumeProduct(null)} />
+      )}
 
       {pinModal && (
         <PinModal title={pinModal.action} subtitle={pinModal.subtitle}
